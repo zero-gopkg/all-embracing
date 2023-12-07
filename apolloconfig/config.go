@@ -1,7 +1,6 @@
 package apolloconfig
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,8 +11,9 @@ import (
 	"github.com/apolloconfig/agollo/v4"
 	"github.com/apolloconfig/agollo/v4/env/config"
 	"github.com/apolloconfig/agollo/v4/storage"
-	"github.com/zeromicro/go-zero/core/conf"
-	"github.com/zeromicro/go-zero/core/logx"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 )
 
 type Conf struct {
@@ -60,7 +60,7 @@ func ConfApply(rs interface{}, ac *ApolloConf) error {
 		}
 
 		// 失败日志
-		logx.Errorf("Failed to fetch config from Apollo. Err is %v,  Retry #%d\n", err, retries+1)
+		logrus.Errorf("Failed to fetch config from Apollo. Err is %v,  Retry #%d\n", err, retries+1)
 
 		// 重试间隔
 		time.Sleep(time.Second * time.Duration(ac.RetryIntervalSec))
@@ -73,7 +73,7 @@ func ConfApply(rs interface{}, ac *ApolloConf) error {
 			return nil
 		}
 
-		logx.Errorf("failed restored config from file. err:%s", err)
+		logrus.Errorf("failed restored config from file. err:%s", err)
 	}
 	return err
 }
@@ -136,7 +136,7 @@ func (z *Conf) Apply() error {
 
 	// 解析正确，本地文件备份
 	if err := saveConfigToFile(z.value); err != nil {
-		logx.Errorf("[conf] wsave config to file, err: %v", err)
+		logrus.Errorf("[conf] wsave config to file, err: %v", err)
 	}
 
 	// 动态监听
@@ -149,7 +149,7 @@ func (z *Conf) get() error {
 	defer z.mux.Unlock()
 	store := z.client.GetConfigCache(z.namespace)
 	if store == nil {
-		logx.Errorf("[conf] namespace [%s] not exist, please check it", z.namespace)
+		logrus.Errorf("[conf] namespace [%s] not exist, please check it", z.namespace)
 		return fmt.Errorf("[conf] namespace [%s] not exist, please check it", z.namespace)
 	}
 
@@ -165,13 +165,13 @@ func (z *Conf) get() error {
 // --------本地文件持久化---------
 func saveConfigToFile(value interface{}) error {
 	// 写入文件
-	logx.Info("writting config to file...")
+	logrus.Info("writting config to file...")
 	data := []byte(fmt.Sprintf("%v", value))
 	return os.WriteFile(backFilePath, data, 0644)
 }
 
 func restoreConfigFromFile(rs interface{}) error {
-	logx.Info("Restored config from file.")
+	logrus.Info("Restored config from file.")
 	// 从文件中读取配置
 	data, err := os.ReadFile(backFilePath)
 	if err != nil {
@@ -187,14 +187,16 @@ func (z *Conf) parse() error {
 
 //----------Unmarshal----------
 
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
+
 // Unmarshal 解析字符串
 // 自动检测字符串类型
 // 非json则进入yaml解析
 func Unmarshal(data []byte, rs interface{}) error {
 	if json.Valid(data) {
-		return conf.LoadFromJsonBytes(data, rs)
+		return json.Unmarshal(data, rs)
 	}
-	return conf.LoadFromYamlBytes(data, rs)
+	return yaml.Unmarshal(data, rs)
 }
 
 // ----------- 实现监听
@@ -214,14 +216,14 @@ func (z *Conf) OnNewestChange(event *storage.FullChangeEvent) {
 	}
 
 	if err := z.parse(); err != nil {
-		logx.Infof("[conf] %s conf data parse fail, err [%s] please check it", z.namespace, err)
+		logrus.Infof("[conf] %s conf data parse fail, err [%s] please check it", z.namespace, err)
 		return
 	}
 
 	// 解析正确，本地文件备份
 	if err := saveConfigToFile(z.value); err != nil {
-		logx.Errorf("[conf] %s [OnNewestChange] save config to file failed, err: %v", z.namespace, err)
+		logrus.Errorf("[conf] %s [OnNewestChange] save config to file failed, err: %v", z.namespace, err)
 	}
 
-	logx.Infof("[conf] %s OnNewestChange parsed", z.namespace)
+	logrus.Infof("[conf] %s OnNewestChange parsed", z.namespace)
 }
