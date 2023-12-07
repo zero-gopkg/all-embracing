@@ -1,4 +1,4 @@
-module all-embracing
+module github.com/zero-gopkg/all-embracing
 
 go 1.17
 
